@@ -1,9 +1,8 @@
-﻿using System;
+﻿using Simple.OData.Client.Extensions;
+using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
-
-using Simple.OData.Client.Extensions;
 
 namespace Simple.OData.Client
 {
@@ -11,6 +10,7 @@ namespace Simple.OData.Client
     {
         static readonly ConcurrentDictionary<string, EdmMetadataCache> _instances = new ConcurrentDictionary<string, EdmMetadataCache>();
         static readonly SemaphoreSlim semaphore = new SemaphoreSlim(1);
+        static readonly ConcurrentDictionary<string, IODataAdapter> _adapterInstances = new ConcurrentDictionary<string, IODataAdapter>();
 
         public static void Clear()
         {
@@ -73,7 +73,11 @@ namespace Simple.OData.Client
 
         public IODataAdapter GetODataAdapter(ISession session)
         {
-            return session.Settings.AdapterFactory.CreateAdapterLoader(MetadataDocument, typeCache)(session);
+            if (_adapterInstances.ContainsKey(session.Settings.BaseUri.AbsoluteUri))
+                return _adapterInstances[session.Settings.BaseUri.AbsoluteUri];
+            var temp = session.Settings.AdapterFactory.CreateAdapterLoader(MetadataDocument, typeCache)(session);
+            _adapterInstances.TryAdd(session.Settings.BaseUri.AbsoluteUri, temp);
+            return temp;
         }
     }
 }

@@ -12,10 +12,16 @@ namespace Simple.OData.Client.V4.Adapter
     public class Metadata : MetadataBase
     {
         private readonly IEdmModel _model;
+        private readonly IEnumerable<IEdmEntityType> _entityTypes;
+        private readonly ILookup<string, IEdmEntityType> _etLookupName;
 
         public Metadata(IEdmModel model, INameMatchResolver nameMatchResolver, bool ignoreUnmappedProperties, bool unqualifiedNameCall) : base(nameMatchResolver, ignoreUnmappedProperties, unqualifiedNameCall)
         {
             _model = model;
+            _entityTypes = _model.SchemaElements
+                .Where(x => x.SchemaElementKind == EdmSchemaElementKind.TypeDefinition && (x as IEdmType).TypeKind == EdmTypeKind.Entity)
+                .Select(x => x as IEdmEntityType);
+            _etLookupName = _entityTypes.ToLookup(et => et.Name);
         }
 
         public override string GetEntityCollectionExactName(string collectionName)
@@ -88,7 +94,7 @@ namespace Simple.OData.Client.V4.Adapter
             var entityType = GetEntityTypes().BestMatch(x => x.Name, collectionName, NameMatchResolver);
             if (entityType != null)
                 return entityType.Name;
-            
+
             throw new UnresolvableObjectException(collectionName, $"Entity type [{collectionName}] not found");
         }
 
@@ -179,14 +185,14 @@ namespace Simple.OData.Client.V4.Adapter
             if (propertyNames == null || propertyNames.Length == 0)
                 throw new ArgumentNullException(nameof(propertyNames));
             var property = GetStructuralProperty(collectionName, propertyNames[0]);
-            var exactNames = new List<string> {property.Name};
+            var exactNames = new List<string> { property.Name };
 
             for (var i = 1; i < propertyNames.Length; i++)
             {
                 var entityType = GetComplexType(property.Type.FullName());
                 property = GetStructuralProperty(entityType, propertyNames[i]);
                 exactNames.Add(property.Name);
-                
+
                 if (property.Type.IsPrimitive())
                     break;
             }
@@ -326,9 +332,10 @@ namespace Simple.OData.Client.V4.Adapter
 
         private IEnumerable<IEdmEntityType> GetEntityTypes()
         {
-            return _model.SchemaElements
-                .Where(x => x.SchemaElementKind == EdmSchemaElementKind.TypeDefinition && (x as IEdmType).TypeKind == EdmTypeKind.Entity)
-                .Select(x => x as IEdmEntityType);
+            return _entityTypes;
+            //return _model.SchemaElements
+            //    .Where(x => x.SchemaElementKind == EdmSchemaElementKind.TypeDefinition && (x as IEdmType).TypeKind == EdmTypeKind.Entity)
+            //    .Select(x => x as IEdmEntityType);
         }
 
         private IEdmEntityType GetEntityType(string collectionName)
@@ -359,15 +366,15 @@ namespace Simple.OData.Client.V4.Adapter
                 else
                 {
                     var collection = NavigateToCollection(collectionName);
-                    var entityTypes = GetEntityTypes();
-                    entityType = entityTypes.SingleOrDefault(x => x.Name == collection.Name);
+                    //var entityTypes = GetEntityTypes();
+                    entityType = _etLookupName[collection.Name].SingleOrDefault();
                     if (entityType != null)
                     {
                         return true;
                     }
                     else
                     {
-                        entityType = entityTypes.BestMatch(x => (x as IEdmEntityType).Name, collection.Name, NameMatchResolver) as IEdmEntityType;
+                        entityType = _entityTypes.BestMatch(x => (x as IEdmEntityType).Name, collection.Name, NameMatchResolver) as IEdmEntityType;
                         if (entityType != null)
                             return true;
                     }
@@ -375,6 +382,13 @@ namespace Simple.OData.Client.V4.Adapter
             }
             else
             {
+                //collectionName = collectionName.TrimEnd('s');
+                //entityType = _etLookupName[collectionName].SingleOrDefault();
+                //if (entityType != null)
+                //{
+                //    return true;
+                //}
+
                 var entitySet = GetEntitySets()
                     .BestMatch(x => x.Name, collectionName, NameMatchResolver);
                 if (entitySet != null)
